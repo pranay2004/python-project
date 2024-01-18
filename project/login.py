@@ -7,7 +7,10 @@ import random
 import sqlite3
 import os
 import win32api
-import mysql.connector as C
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+import myemail
 
 root=tk.Tk()
 root.geometry("500x600")
@@ -16,55 +19,50 @@ root.title("(STUDENTS DETAILS MANAGEMENT SYSTEM)")
 bg_color="sandybrown"
 button="springgreen"
 
-login_student_icon=tk.PhotoImage(file="C:\\Users\\Lenovo\\OneDrive\\Desktop\\pranay\\project\\student.png")
-login_admin_icon=tk.PhotoImage(file="C:\\Users\\Lenovo\\OneDrive\\Desktop\\pranay\\project\\admin.png")
-add_student_icon=tk.PhotoImage(file="C:\\Users\\Lenovo\\OneDrive\\Desktop\\pranay\\project\\add.png")
-add_student_pic_icon=tk.PhotoImage(file="C:\\Users\\Lenovo\\OneDrive\\Desktop\\pranay\\project\\student_profile_img.png")
+login_student_icon=tk.PhotoImage(file=".\\student.png")
+login_admin_icon=tk.PhotoImage(file=".\\admin.png")
+add_student_icon=tk.PhotoImage(file=".\\add.png")
+add_student_pic_icon=tk.PhotoImage(file=".\\student_profile_img.png")
 
 #########################################------------------------------------#########################################
-'''
+
 def init_database():
 
-    if os.path.exists("students_accounts.db"):
-        pass
+    connection=sqlite3.connect("students_accounts_db")
 
+    cursor= connection.cursor()
 
-    else:
+    cursor.execute("""
+    create table if not exists data(
+    id_number text,
+    password text,
+    name text,
+    age text,
+    gender text,
+    phone_number text,
+    student_class text,
+    email text,
+    image blob
+    )
+    """)
 
-        connection=C.connect(host="localhost",user="root",password="root",db="students_accounts")
+    connection.commit()
+    connection.close()
 
-        cursor= connection.cursor()
-
-        cursor.execute("""
-        create table data(
-        id_number text,
-        password text,
-        name text,
-        age text,
-        gender text,
-        phone_number text,
-        student_class text,
-        email text,
-        image blob
-        )
-        """)
-
-        connection.commit()
-        connection.close()
-'''
 #########################################------------------------------------#########################################
 
 def check_id_already_exists(id_number):
-    connection=connection=C.connect(host="localhost",user="root",password="root",db="students_accounts")
+    connection=sqlite3.connect("students_accounts_db")
 
     cursor= connection.cursor()
 
     cursor.execute(f"""
-    SELECT id_number FROM data WHERE id_number == "{id_number}"
+    SELECT id_number FROM data WHERE id_number = "{id_number}"
     """)
 
-    connection.commit()
+    
     response = cursor.fetchall()
+    connection.commit()
     connection.close()
 
     return response
@@ -72,13 +70,12 @@ def check_id_already_exists(id_number):
 ##################################-----------------------------------############################
 
 def check_valid_password(id_number, password):
-    connection=connection=C.connect(host="localhost",user="root",password="root",db="students_accounts")
-
+    connection=sqlite3.connect("students_accounts_db")
     cursor= connection.cursor()
 
-    cursor.execute(f"""
-    SELECT password FROM data WHERE id_number == "{id_number}" AND password == "{password}"
-    """)
+    cursor.execute("""
+    SELECT password FROM data WHERE id_number = %s AND password = %s
+    """, (id_number, password))
 
     connection.commit()
     response = cursor.fetchall()
@@ -90,17 +87,20 @@ def check_valid_password(id_number, password):
 
 def add_data(id_number ,password ,name ,age ,gender,phone_number,
             student_class,email,pic_data):
-    connection=connection=C.connect(host="localhost",user="root",password="root",db="students_accounts")
+    try:
+        connection=sqlite3.connect("students_accounts_db")
+        cursor= connection.cursor()
 
-    cursor= connection.cursor()
+        cursor.execute("""
+        INSERT INTO data (id_number, password, name, age, gender, phone_number, student_class, email, image) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (id_number, password, name, age, gender, phone_number, student_class, email, pic_data))
 
-    cursor.execute("""
-    INSERT INTO data VALUES("{id_number}", "{password}", "{name}",
-    "{age}", "{gender}","{phone_number}","{student_class}","{email}", ?)
-    """,[pic_data])
-
-    connection.commit()
-    connection.close()
+        connection.commit()
+    except Exception as e:
+        print("An error occured whule inserting data:", e)
+    finally:
+        connection.close()
 
 #########################################------------------------------------#########################################
 def confirmation_box(message):
@@ -156,7 +156,10 @@ Contact:
 Email:
 """
 
-    student_card=Image.open("C:\\Users\\Lenovo\\OneDrive\\Desktop\\pranay\\project\\student_card_frame.png")
+    if not os.path.isfile(student_pic_path):
+        raise FileNotFoundError(f"The image file {student_pic_path} does not exist.")
+
+    student_card = Image.open(".\\student_card_frame.png")
     pic = Image.open(student_pic_path).resize((100, 100))
 
 
@@ -181,24 +184,20 @@ Email:
 
 #########################################------------------------------------#########################################
 
-def student_card_page(student_card_obj):
+def student_card_page(student_card_obj, student_id):
 
     def save_student_card():
         path=askdirectory()
-
         if path:
-            print(path)
-
-            student_card_obj.save(f"{path}/student_card.png")
+            student_card_filename = f"student_card_{student_id}.png"
+            student_card_obj.save(os.path.join(path, student_card_filename))
+            message_box(f"Student card saved as {student_card_filename}")
 
     def print_student_card():
-         path=askdirectory()
-
-         if path:
-            print(path)
-
-            student_card_obj.save(f"{path}/student_card.png")
-
+        path=askdirectory()
+        if path:
+            student_card_filename = f"student_card_{student_id}.png"
+            student_card_obj.save(os.path.join(path, student_card_filename))
             win32api.ShellExecute(0, "print", f"{path}/student_card.png",
                                   None, ".",0)
             
@@ -260,7 +259,7 @@ def welcome_page():
     heading_lb=tk.Label(welcome_page_fm,text="WELCOME TO THE SYSTEM", bg=bg_color, fg="white", font=("Bold",18))
     heading_lb.place(x=0,y=0,width=400,)
 
-    image1 = Image.open("C:\\Users\\Lenovo\\OneDrive\\Desktop\\pranay\\project\\logo1.png")
+    image1 = Image.open(".\\logo1.png")
     test = ImageTk.PhotoImage(image1)
     label1 = tk.Label(welcome_page_fm, image=test)
     label1.image = test
@@ -293,11 +292,253 @@ def welcome_page():
 
 #########################################------------------------------------#########################################
 
+def sendmail_to_student(email, message , subject):
+    smtp_server = "smtp.gmail.com"
+    smtp_port = 587
+
+    username = myemail.email_address
+    password = myemail.password
+
+    msg = MIMEMultipart()
+
+    msg["Subject"] = subject
+    msg["From"] = username
+    msg["To"] = email
+
+    msg.attach(MIMEText(_text=message, _subtype="html"))
+
+    smtp_connection = smtplib.SMTP(host=smtp_server, port=smtp_port)
+    smtp_connection.starttls()
+    smtp_connection.login(user= username, password=password)
+
+    smtp_connection.sendmail(from_addr=username, to_addrs=email,msg=msg.as_string())
+    print("Mail sent successfully")
+
+#########################################------------------------------------#########################################
+
+def forget_password_page():
+
+    def recover_password():
+        student_id = student_id_ent.get()
+        
+        if check_id_already_exists(id_number=student_id):
+            print("correct ID")
+
+            connection = sqlite3.connect("students_accounts_db")
+            cursor = connection.cursor()
+            
+            cursor.execute("""
+            SELECT password FROM data WHERE id_number = ?
+            """, (student_id,))
+
+            results= cursor.fetchall()
+
+            if results:
+                recovered_password = results[0][0]
+                
+            else:
+                print("No password found for this ID.")
+            
+            connection.commit()
+
+            cursor.execute("""
+            SELECT email FROM data WHERE id_number = ?
+            """, (student_id,))
+            email_results = cursor.fetchall()
+            if email_results:
+                student_email = email_results[0][0]
+                
+            else:
+                print("No email found for this ID.")
+            connection.close()
+
+            confirmation = confirmation_box(message=f"""We will Send\nYour Forget Password
+        via Your Email Address:
+        {student_email}
+        Do you Want to Continue?""")
+            
+            if confirmation:
+                msg = f"""<h1>Your Forgeten Password is:</h1>
+                <h2>{recovered_password}</h2>
+                <p>After remembering, please delete this email for safety reasons.</p>"""
+                sendmail_to_student(email=student_email, message=msg,
+                                    subject="Password Recovery")
+
+        else:
+            print("incorrect ID")
+            message_box(message="!Invalid ID Number")
+
+    forget_password_page_fm = tk.Frame(root, highlightbackground=
+                                       bg_color, highlightthickness=3)
+    heading_lb = tk.Label(forget_password_page_fm, text="⚠ Forgetting Password",
+                          font=("bold", 15), bg=bg_color, fg="white")
+    heading_lb.place(x=0, y=0, width=350)
+
+    close_btn = tk.Button(forget_password_page_fm, text="X",
+                          font=("bold", 13), bg=bg_color, fg="white",
+                          bd=0, command=lambda: forget_password_page_fm.destroy())
+    close_btn.place(x=320, y=0)
+
+    student_id_lb = tk.Label(forget_password_page_fm, text="Enter Student ID Number.",
+                             font=("Bold", 13))
+    student_id_lb.place(x=70, y=40)
+
+    student_id_ent = tk.Entry(forget_password_page_fm,
+                              font=("Bold", 15), justify=tk.CENTER)
+    student_id_ent.place(x=70, y=70, width=180)
+
+    info_lb = tk.Label(forget_password_page_fm,
+                       text="""Via Your Email Address
+we will Send to You
+Your Forgeten Password.""", justify=tk.LEFT)
+    info_lb.place(x=75, y=110)
+
+    next_btn = tk.Button(forget_password_page_fm,
+                         text="Next", font=("Bold", 13), bg=bg_color,
+                         fg="white", command=recover_password)
+    next_btn.place(x=130, y=200, width=80)
+    
+    
+    forget_password_page_fm.place(x=75, y=120, width=350, height=250)
+
+
+#########################################------------------------------------#########################################
+
+def student_dashboard():
+
+    def switch(indicator, page):
+        home_btn_indicator.config(bg="#c3c3c3")
+        student_card_btn_indicator.config(bg="#c3c3c3")
+        security_btn_indicator.config(bg="#c3c3c3")
+        edit_data_btn_indicator.config(bg="#c3c3c3")
+        delete_account_btn_indicator.config(bg="#c3c3c3")
+
+        indicator.config(bg="red")
+
+        page()
+
+    dashboard_fm= tk.Frame(root, highlightbackground=bg_color,
+                           highlightthickness=3)
+    
+    options_fm = tk.Frame(dashboard_fm, highlightbackground=bg_color,
+                           highlightthickness=2, bg="#c3c3c3")
+    
+    home_btn = tk.Button(options_fm, text="Home", font=("Bold", 15),
+                         fg="red", bg="#c3c3c3", bd=0,
+                         command=lambda: 
+                         switch(indicator=home_btn_indicator))
+    home_btn.place(x=10, y=60)
+
+    home_btn_indicator = tk.Label(options_fm, bg="red")
+    home_btn_indicator.place(x=5, y=60, width=3, height=34)
+
+
+    student_card_btn = tk.Button(options_fm, text="Student\nCard", font=("Bold", 15),
+                         fg="red", bg="#c3c3c3", bd=0, justify=tk.LEFT,
+                         command=lambda: 
+                         switch(indicator=student_card_btn_indicator,
+                         page=dashboard_student_card_page))
+    
+    student_card_btn.place(x=10, y=105)
+
+    student_card_btn_indicator = tk.Label(options_fm, bg="#c3c3c3")
+    student_card_btn_indicator.place(x=5, y=115, width=3, height=40)
+
+    security_btn = tk.Button(options_fm, text="Security", font=("Bold", 15),
+                         fg="red", bg="#c3c3c3", bd=0,
+                         command=lambda: 
+                         switch(indicator=security_btn_indicator))
+    security_btn.place(x=10, y=175)
+
+    security_btn_indicator = tk.Label(options_fm, bg="#c3c3c3")
+    security_btn_indicator.place(x=5, y=180, width=3, height=30)
+
+    edit_data_btn = tk.Button(options_fm, text="Edit Data", font=("Bold", 15),
+                         fg="red", bg="#c3c3c3", bd=0,
+                         command=lambda: 
+                         switch(indicator=edit_data_btn_indicator))
+    edit_data_btn.place(x=10, y=220)
+
+    edit_data_btn_indicator = tk.Label(options_fm, bg="#c3c3c3")
+    edit_data_btn_indicator.place(x=5, y=220, width=3, height=30)
+
+    delete_account_btn = tk.Button(options_fm, text="Delete\nAcoount", font=("Bold", 15),
+                         fg="red", bg="#c3c3c3", bd=0, justify=tk.LEFT,
+                         command=lambda: 
+                         switch(indicator=delete_account_btn_indicator))
+    delete_account_btn.place(x=10, y=270)
+
+    delete_account_btn_indicator = tk.Label(options_fm, bg="#c3c3c3")
+    delete_account_btn_indicator.place(x=5, y=280, width=3, height=40)
+
+    logout_btn = tk.Button(options_fm, text="Log out", font=("Bold", 15),
+                         fg="red", bg="#c3c3c3", bd=0)
+    logout_btn.place(x=10, y=340)
+
+    options_fm.place(x=0, y=0, width=128, height=575)
+
+    def home_page():
+        home_page_fm = tk.Frame(pages_fm)
+
+        home_page_lb = tk.Label(home_page_fm, text="Home Page",
+                             font=("Bold",15))
+        home_page_lb.place(x=108,y=280)
+
+        home_page_fm.pack(fill=tk.BOTH, expand=True)
+
+    def student_card_page():
+        student_card_page_fm = tk.Frame(pages_fm)
+
+        student_card_page_lb = tk.Label(student_card_page_fm, text="Student Card Page",
+                             font=("Bold",15))
+        student_card_page_lb.place(x=108,y=280)
+
+        student_card_page_fm.pack(fill=tk.BOTH, expand=True)
+
+    def security_page():
+        security_page_fm = tk.Frame(pages_fm)
+
+        security_page_lb = tk.Label(security_page_fm, text="Security Page",
+                             font=("Bold",15))
+        security_page_lb.place(x=108,y=280)
+
+        security_page_fm.pack(fill=tk.BOTH, expand=True)
+    
+    def edit_data_page():
+        edit_data_page_fm = tk.Frame(pages_fm)
+
+        edit_data_page_lb = tk.Label(edit_data_page_fm, text="Edit Data Page",
+                             font=("Bold",15))
+        edit_data_page_lb.place(x=108,y=280)
+
+        edit_data_page_fm.pack(fill=tk.BOTH, expand=True)
+
+    def delete_account_page():
+        delete_account_page_fm = tk.Frame(pages_fm)
+
+        delete_account_page_lb = tk.Label(delete_account_page_fm, text="Delete Account Page",
+                             font=("Bold",15))
+        delete_account_page_lb.place(x=108,y=280)
+
+        delete_account_page_fm.pack(fill=tk.BOTH, expand=True)
+
+    pages_fm = tk.Frame(dashboard_fm)
+    pages_fm.place(x=131, y=5, width=341, height=558)
+    home_page()
+
+    dashboard_fm.pack(pady=5)
+    dashboard_fm.pack_propagate(False)
+    dashboard_fm.configure(width=480, height=580)
+
+#########################################------------------------------------#########################################
 def student_login_page():
     def forward_to_welcome_page():
         student_login_page_fm.destroy()
         root.update()
         welcome_page()
+
+    def forward_to_forgot_password_page():
+        forget_password_page()
 
     def remove_highlight_warning(entry):
         if entry["highlightbackground"]!="grey":
@@ -349,7 +590,8 @@ def student_login_page():
                         bg="navy", fg="white",width="20",height="1", command=login_account)
     login_btn.place(x=79,y=320)
 
-    forget_password_btn=tk.Button(student_login_page_fm, text="⚠\n Forgot Password?", fg="dark blue", bd=0)
+    forget_password_btn=tk.Button(student_login_page_fm, text="⚠\n Forgot Password?",
+                                   fg="dark blue", bd=0, command=forward_to_forgot_password_page)
     forget_password_btn.place(x=140,y=380)
 
     student_login_page_fm.pack(pady=30)
@@ -517,7 +759,7 @@ def add_account_page():
                 read_data.close()
 
             else:
-                read_data = open("C:\\Users\\Lenovo\\OneDrive\\Desktop\\pranay\\project\\student_profile_img.png", "rb")
+                read_data = open(".\\student_profile_img.png", "rb")
                 pic_data = read_data.read()
                 read_data.close()
 
@@ -546,7 +788,7 @@ def add_account_page():
 
             get_student_card=draw_student_card(student_pic_path=pic_path.get(),
                               student_data=data)
-            student_card_page(student_card_obj=get_student_card)
+            student_card_page(student_card_obj=get_student_card, student_id=student_id.get())
 
             add_account_page_fm.destroy()
             root.update()
@@ -682,7 +924,7 @@ Student Can Login Account.""", justify=tk.LEFT)
     add_account_page_fm.pack_propagate(False)
     add_account_page_fm.configure(width=480, height=580, bg="#f8f8ff")
 
-#init_database()
-add_account_page()
-#student_card_page()
+init_database()
+#add_account_page()
+student_dashboard()
 root.mainloop()
