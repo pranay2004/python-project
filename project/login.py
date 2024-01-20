@@ -1,5 +1,6 @@
 import tkinter as tk
-from PIL import ImageTk, Image, ImageDraw, ImageFont
+from PIL import ImageTk, Image, ImageDraw, ImageFont, ImageOps
+from io import BytesIO
 from tkinter.ttk import Combobox
 from tkinter.filedialog import askopenfilename, askdirectory
 import re
@@ -404,7 +405,33 @@ Your Forgeten Password.""", justify=tk.LEFT)
 
 #########################################------------------------------------#########################################
 
-def student_dashboard():
+def fetch_student_data(query, parameters=None):
+    connection = sqlite3.connect("students_accounts_db")
+    cursor = connection.cursor()
+    if parameters:
+        cursor.execute(query, parameters)
+    else:
+        cursor.execute(query)
+    response= cursor.fetchall()
+
+    cursor.close()
+    connection.close()
+    return response
+
+#########################################------------------------------------#########################################
+
+def student_dashboard(student_id):
+
+    query = """
+    SELECT name, age, gender,student_class, phone_number, email FROM data WHERE id_number =?
+    """
+    get_student_details = fetch_student_data(query, (student_id,))
+    query1  = """
+    SELECT image FROM data WHERE id_number =?
+    """
+    get_student_pic = fetch_student_data(query1, (student_id,))
+
+    student_pic = BytesIO(get_student_pic[0][0])
 
     def switch(indicator, page):
         home_btn_indicator.config(bg="#c3c3c3")
@@ -414,6 +441,10 @@ def student_dashboard():
         delete_account_btn_indicator.config(bg="#c3c3c3")
 
         indicator.config(bg="red")
+
+        for child in pages_fm.winfo_children():
+            child.destroy()
+            root.update()
 
         page()
 
@@ -426,7 +457,8 @@ def student_dashboard():
     home_btn = tk.Button(options_fm, text="Home", font=("Bold", 15),
                          fg="red", bg="#c3c3c3", bd=0,
                          command=lambda: 
-                         switch(indicator=home_btn_indicator))
+                         switch(indicator=home_btn_indicator,
+                                page=home_page))
     home_btn.place(x=10, y=60)
 
     home_btn_indicator = tk.Label(options_fm, bg="red")
@@ -437,7 +469,7 @@ def student_dashboard():
                          fg="red", bg="#c3c3c3", bd=0, justify=tk.LEFT,
                          command=lambda: 
                          switch(indicator=student_card_btn_indicator,
-                         page=dashboard_student_card_page))
+                                page=student_card_page))
     
     student_card_btn.place(x=10, y=105)
 
@@ -447,7 +479,8 @@ def student_dashboard():
     security_btn = tk.Button(options_fm, text="Security", font=("Bold", 15),
                          fg="red", bg="#c3c3c3", bd=0,
                          command=lambda: 
-                         switch(indicator=security_btn_indicator))
+                         switch(indicator=security_btn_indicator,
+                         page=security_page))
     security_btn.place(x=10, y=175)
 
     security_btn_indicator = tk.Label(options_fm, bg="#c3c3c3")
@@ -456,7 +489,8 @@ def student_dashboard():
     edit_data_btn = tk.Button(options_fm, text="Edit Data", font=("Bold", 15),
                          fg="red", bg="#c3c3c3", bd=0,
                          command=lambda: 
-                         switch(indicator=edit_data_btn_indicator))
+                         switch(indicator=edit_data_btn_indicator,
+                         page=edit_data_page))
     edit_data_btn.place(x=10, y=220)
 
     edit_data_btn_indicator = tk.Label(options_fm, bg="#c3c3c3")
@@ -465,7 +499,8 @@ def student_dashboard():
     delete_account_btn = tk.Button(options_fm, text="Delete\nAcoount", font=("Bold", 15),
                          fg="red", bg="#c3c3c3", bd=0, justify=tk.LEFT,
                          command=lambda: 
-                         switch(indicator=delete_account_btn_indicator))
+                         switch(indicator=delete_account_btn_indicator,
+                         page=delete_account_page))
     delete_account_btn.place(x=10, y=270)
 
     delete_account_btn_indicator = tk.Label(options_fm, bg="#c3c3c3")
@@ -478,21 +513,54 @@ def student_dashboard():
     options_fm.place(x=0, y=0, width=128, height=575)
 
     def home_page():
+        
+        student_pic_image_obj = Image.open(student_pic)
+        size = 100
+        mask = Image.new(mode= "L", size=(size, size))
+        
+        draw_circle = ImageDraw.Draw(im=mask)
+        draw_circle.ellipse(xy=(0,0, size, size), fill=255, outline= True)
+
+        output = ImageOps.fit(image=student_pic_image_obj, size=mask.size,
+        centering=(1,1))
+
+        output.putalpha(mask)
+
+        student_picture = ImageTk.PhotoImage(output)
+
         home_page_fm = tk.Frame(pages_fm)
 
-        home_page_lb = tk.Label(home_page_fm, text="Home Page",
-                             font=("Bold",15))
-        home_page_lb.place(x=108,y=280)
+        student_pic_lb = tk.Label(home_page_fm, image=student_picture)
+        student_pic_lb.image = student_picture
+        student_pic_lb.place(x=10, y=10)
+
+        hi_lb = tk.Label(home_page_fm, text=f"!Hi {get_student_details[0][0]}",
+                         font=("Bolde", 15))
+        hi_lb.place(x=130, y=50)
+
+        student_details = f"""
+Student ID: {student_id}\n
+Name: {get_student_details[0][0]}\n
+Age: {get_student_details[0][1]}\n 
+Gender: {get_student_details[0][2]}\n  
+Class: {get_student_details[0][3]}\n 
+Contact: {get_student_details[0][4]}\n
+Email: {get_student_details[0][5]}
+"""
+
+        student_details_lb = tk.Label(home_page_fm,text= student_details,
+                                      font=("Bold", 13), justify=tk.LEFT)
+        student_details_lb.place(x=20, y=130)
 
         home_page_fm.pack(fill=tk.BOTH, expand=True)
 
     def student_card_page():
         student_card_page_fm = tk.Frame(pages_fm)
 
-        student_card_page_lb = tk.Label(student_card_page_fm, text="Student Card Page",
-                             font=("Bold",15))
-        student_card_page_lb.place(x=108,y=280)
-
+        save_student_card_btn = tk.Button(student_card_page_fm, text="Save Student Card",
+                                          font=("Bold",15), bd=1, fg="white", bg=bg_color)
+        save_student_card_btn.place(x=40, y=400)
+        
         student_card_page_fm.pack(fill=tk.BOTH, expand=True)
 
     def security_page():
@@ -549,7 +617,10 @@ def student_login_page():
         verify_id_number= check_id_already_exists(id_number=id_number_ent.get())
         
         if verify_id_number:
-            print("ID is correct")
+            id_number=id_number_ent.get()
+            student_login_page_fm.destroy()
+            student_dashboard(student_id=id_number)
+            root.update()
 
         else:
             print("!oops ID is Incorrect")
@@ -926,5 +997,6 @@ Student Can Login Account.""", justify=tk.LEFT)
 
 init_database()
 #add_account_page()
-student_dashboard()
+student_dashboard(student_id=989524)
+#student_login_page()
 root.mainloop()
